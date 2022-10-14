@@ -1,0 +1,16 @@
+{
+	"compilerOptions": {
+		"allowSyntheticDefaultImports": true,
+		"module": "commonjs",
+		"moduleResolution": "Node",
+		"resolveJsonModule": true,
+		"strict": true,
+		"target": "ES2018",
+
+		"rootDir": "src",
+		"outDir": "out",
+		"baseUrl": "src",
+		"incremental": true,
+		"tsBuildInfoFile": "out/tsconfig.tsbuildinfo",
+	}
+}
