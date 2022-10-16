@@ -1,13 +1,17 @@
-use std::collections::HashMap;
-
 use anyhow::{anyhow, Result};
-use reqwest::{Client, StatusCode, Url};
+use reqwest::{Client, Url};
 use serde::Deserialize;
-use serde_json::{from_slice, to_string};
+use serde_json::from_slice;
 
-use crate::structs::{OpenIDConfiguration, OpenIDProvider, WilmaHubWilma, WilmaIndexJson};
+use api::models::WilmaHubWilma;
 
+pub mod api;
 pub mod auth;
+
+pub use api::models;
+pub use api::WilmaApi;
+
+use self::models::WilmaRole;
 
 const WILMA_HUB: &str = "https://wilmahub.service.inschool.fi/wilmat";
 
@@ -16,79 +20,45 @@ struct WilmaHubResponse {
     wilmat: Vec<WilmaHubWilma>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Wilma {
-    pub url: Url,
+    pub base_url: Url,
     pub name: String,
 
     sid: Option<String>,
+    pub role: Option<WilmaRole>,
 }
 
 impl Wilma {
-    fn new(url: Url, name: String) -> Self {
+    fn new(base_url: Url, name: String) -> Self {
         Self {
-            url,
+            base_url,
             name,
             sid: None,
+            role: None,
         }
     }
 
-    pub fn from_url(url: Url) -> Self {
-        Self {
-            url,
-            name: "".into(),
-            sid: None,
-        }
+    pub fn from_url(base_url: Url) -> Self {
+        Self::new(base_url, String::new())
     }
 
-    async fn get_index_json(&self, client: &Client) -> Result<WilmaIndexJson> {
-        let response = client.get(self.url.join("/index_json")?).send().await?;
-
-        Ok(from_slice(&response.bytes().await?)?)
+    pub fn is_authenticated(&self) -> bool {
+        self.sid.is_some()
     }
 
-    pub async fn is_wilma(&self, client: &Client) -> Result<bool> {
-        Ok(self.get_index_json(client).await.is_ok())
+    pub fn is_logged_in(&self) -> bool {
+        self.sid.is_some() && self.role.is_some()
     }
 
-    pub async fn get_providers(&self, client: &Client) -> Result<Option<Vec<OpenIDProvider>>> {
-        let data = self.get_index_json(client).await?;
-
-        Ok(data.oidc_providers)
-    }
-
-    pub async fn openid_login(
-        &mut self,
-        client: &Client,
-        configuration: String,
-        client_id: String,
-        access_token: String,
-        id_token: String,
-    ) -> Result<()> {
-        let session_id = self.get_index_json(client).await?.session_id;
-
-        let mut payload = HashMap::<&str, String>::with_capacity(5);
-        payload.insert("configuration", configuration);
-        payload.insert("clientId", client_id);
-        payload.insert("accessToken", access_token);
-        payload.insert("sessionId", session_id);
-        payload.insert("idToken", id_token);
-
-        let response = client
-            .post(self.url.join("/api/v1/external/openid/login")?)
-            .form(&[("payload", to_string(&payload)?)])
-            .send()
-            .await?;
-
-        let sid = response
-            .headers()
-            .get("Set-Cookie")
-            .ok_or(anyhow!("Response did not contain Wilma2SID cookie"))?
-            .to_str()?;
-
-        self.sid = Some(sid.to_string());
-
-        Ok(())
+    pub fn get_url(&self) -> Result<Url> {
+        Ok(self.base_url.join(format!(
+            "{}/",
+            self.role
+                .as_ref()
+                .ok_or_else(|| anyhow!("No role selected"))?
+                .slug
+        ).as_str())?)
     }
 }
 

@@ -1,6 +1,5 @@
-use std::{collections::HashMap, time::Duration};
+use std::collections::HashMap;
 
-use dialoguer;
 use reqwest::{Client, Url};
 use tokio::runtime::Runtime;
 
@@ -8,21 +7,30 @@ use anyhow::{anyhow, Result};
 
 use windows::Win32::System::Console::GetConsoleProcessList;
 
+use flexi_logger::{Duplicate, FileSpec, Logger};
 use log::*;
-use simple_logger::SimpleLogger;
 
-use interfaces::{Interface, InterfaceOptions};
+use interfaces::{Interface, InterfaceContext};
 
 mod interfaces;
-mod structs;
-mod wilma;
 mod ipc;
 mod reg;
+mod wilma;
+mod dump;
 
 const DEFAULT_LOGGER_LEVEL: LevelFilter = if cfg!(debug_assertions) {
     LevelFilter::Debug
 } else {
     LevelFilter::Info
+};
+
+const DEFAULT_LOGGER_LEVEL_STR: &str = match DEFAULT_LOGGER_LEVEL {
+    LevelFilter::Trace => "wilma_dumper=trace",
+    LevelFilter::Debug => "wilma_dumper=debug",
+    LevelFilter::Info => "wilma_dumper=info",
+    LevelFilter::Warn => "wilma_dumper=warn",
+    LevelFilter::Error => "wilma_dumper=error",
+    LevelFilter::Off => "off",
 };
 
 fn get_client() -> Result<Client> {
@@ -35,9 +43,38 @@ fn get_client() -> Result<Client> {
         .build()?)
 }
 
+fn init_logger(discriminant: &str, level: Option<&str>) -> Result<flexi_logger::LoggerHandle> {
+    let exe_path = std::env::current_exe()?;
+    let path = exe_path
+        .parent()
+        .unwrap()
+        .to_str()
+        .ok_or_else(|| anyhow!("Path contains non-unicode characters"))?
+        .replace(r"\\?\", "");
+
+    let handle = Logger::try_with_env_or_str(level.unwrap_or(DEFAULT_LOGGER_LEVEL_STR))
+        .unwrap()
+        .format_for_files(flexi_logger::detailed_format)
+        .format_for_stderr(flexi_logger::colored_detailed_format)
+        .format_for_stdout(flexi_logger::colored_detailed_format)
+        .log_to_file(
+            FileSpec::default()
+                .directory(path)
+                .suppress_timestamp()
+                .discriminant(discriminant),
+        )
+        .duplicate_to_stderr(Duplicate::Error)
+        .duplicate_to_stdout(Duplicate::All)
+        .start()?;
+
+    Ok(handle)
+}
+
+//TODO move elsewhere? Maybe wilma::auth?
 async fn handle_oauth(args: Vec<String>) -> Result<()> {
     let protocol_url = Url::parse(args.get(2).expect("Missing protocol url").as_str())?;
     assert!(protocol_url.scheme() == "wilma", "Invalid protocol url");
+
     let data = ipc::receive_data().await?;
 
     match data {
@@ -53,7 +90,7 @@ async fn handle_oauth(args: Vec<String>) -> Result<()> {
                 .collect();
             match params.get("state") {
                 Some(given) => {
-                    if given.to_owned() != state {
+                    if *given != state {
                         return Err(anyhow!("State mismatch"));
                     }
                 }
@@ -64,6 +101,7 @@ async fn handle_oauth(args: Vec<String>) -> Result<()> {
 
             let token_url = Url::parse(token_url.as_str())?;
 
+            trace!("Starting token request");
             let token_data = wilma::auth::oauth_authenticate(
                 &client,
                 protocol_url,
@@ -82,38 +120,46 @@ async fn handle_oauth(args: Vec<String>) -> Result<()> {
         _ => unreachable!(),
     }
 
-    Ok::<(), anyhow::Error>(())
+    Ok(())
 }
 
 fn run_interface(interface: impl Interface) -> Result<()> {
-    interface.start(InterfaceOptions::new(get_client()?))
+    interface.start(InterfaceContext::new(get_client()?))
 }
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     if args.get(1).unwrap_or(&String::default()).as_str() == "__OAUTH" {
+        std::env::set_var("RUST_BACKTRACE", "1"); //windows decides to ignore environment variables apparently
+        init_logger("oauth", Some("trace"))?;
+
         debug!("Called with __OAUTH, assuming from protocol handler");
-        Runtime::new().expect("Failed to create runtime").block_on(handle_oauth(args))?;
-        return Ok(());
+        let res = Runtime::new()
+            .expect("Failed to create runtime")
+            .block_on(handle_oauth(args));
+
+        if res.is_err() {
+            error!("Oauth handler failed: {:?}", res);
+        }
+
+        return res;
     }
 
-    SimpleLogger::new()
-        .with_level(DEFAULT_LOGGER_LEVEL)
-        .env()
-        .init()?;
-
-    debug!("Registering wilma protocol handler");
-    reg::register_wilma_handler()?;
-
-    let in_terminal = unsafe {
+    let has_parent = unsafe {
         let parents = GetConsoleProcessList(&mut [0]);
         parents > 1
     };
 
+    let logger_discr = if has_parent { "no-terminal" } else { "" };
+    init_logger(logger_discr, None)?;
+
+    debug!("Registering protocol handler");
+    reg::register_wilma_handler()?;
+
     let rt = Runtime::new().expect("Failed to create runtime");
     let _guard = rt.enter();
 
-    let res = if in_terminal {
+    let res = if has_parent && std::env::var("FORCE_GUI").is_err() {
         debug!("Starting CLI interface");
         run_interface(interfaces::CliInterface::new(rt.handle().clone()))
     } else {
@@ -123,8 +169,8 @@ fn main() -> Result<()> {
 
     debug!("Shutting down runtime");
     rt.shutdown_background();
-    debug!("Unregistering wilma handler");
+    debug!("Unregistering protocol handler");
     reg::unregister_wilma_handler()?;
-    
+
     res
 }

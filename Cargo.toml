@@ -5,12 +5,22 @@ edition = "2021"
 authors = ["Mixu_78"]
 description = "balls"
 
+[profile.release]
+lto = true
+codegen-units = 1
+
 [dependencies]
 winreg = "0.10.1"
 windows = { version = "0.42.0", features = ["Win32_System_Console"]}
 
-reqwest = { version = "0.11.12", features = ["blocking"] }
+async-trait = "0.1.57"
+lazy_static = "1.4.0"
+regex = "1.6.0"
+anyhow = { version = "1.0.65", features = ["backtrace"] }
+tokio = { version = "1.21.2", default-features = false, features = ["rt-multi-thread", "net", "macros"] }
 
+reqwest = "0.11.12"
+scraper = "0.13.0"
 webbrowser = "0.8.0"
 
 rand = "0.8.5"
@@ -19,15 +29,11 @@ base64-url = "1.4.13"
 
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-serde_derive = "1.0"
+csv = "1.1.6"
 
 clap = { version = "4.0.13", features = ["derive"] }
+dialoguer = { version = "0.10.2", default-features = false, features = ["fuzzy-select"]}
 eframe = "0.19.0"
 
-dialoguer = { version = "0.10.2", default-features = false, features = ["fuzzy-select"]}
-
-tokio = { version = "1.21.2", default-features = false, features = ["rt-multi-thread", "net", "macros"] }
-
 log = "0.4.17"
-simple_logger = "2.3.0"
-anyhow = "1.0.65"
+flexi_logger = "0.24.0"

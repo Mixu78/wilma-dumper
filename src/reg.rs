@@ -4,7 +4,7 @@ use anyhow::{anyhow, Result};
 
 pub fn register_wilma_handler() -> Result<()> {
     let path = std::env::current_exe()?.into_os_string();
-    let path = path.to_str().ok_or(anyhow!("Path contains non-unicode characters"))?;
+    let path = path.to_str().ok_or_else(|| anyhow!("Path contains non-unicode characters"))?.replace(r"\\?\", "");
 
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     let classes = hkcu.open_subkey("SOFTWARE\\Classes")?;

@@ -8,11 +8,11 @@ mod gui;
 pub use cli::CliInterface;
 pub use gui::GuiInterface;
 
-pub struct InterfaceOptions {
+pub struct InterfaceContext {
     client: Client,
 }
 
-impl InterfaceOptions {
+impl InterfaceContext {
     pub fn new(client: Client) -> Self {
         Self {
             client,
@@ -22,5 +22,5 @@ impl InterfaceOptions {
 
 pub trait Interface {
     fn new(rt: Handle) -> Self;
-    fn start(self, options: InterfaceOptions) -> Result<()>;
+    fn start(self, options: InterfaceContext) -> Result<()>;
 }

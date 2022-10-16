@@ -1,5 +1,6 @@
 use tokio::net::windows::named_pipe::{ClientOptions, ServerOptions};
 use tokio::time;
+use std::io;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -9,8 +10,8 @@ use serde_json::{from_slice, to_string};
 
 use log::*;
 
-const CAPACITY: usize = 1024 * 10;
-const PIPE_NAME: &str = r"\\.\pipe\wilma-stuff";
+const CAPACITY: usize = 1024 * 4; // token response is ~2.5kb
+const PIPE_NAME: &str = r"\\.\pipe\wilma-dumper";
 
 #[derive(Deserialize, Serialize)]
 pub enum IPCMessage {
@@ -35,29 +36,38 @@ pub async fn receive_data() -> Result<IPCMessage> {
     server.readable().await?;
 
     let mut buf: [u8; CAPACITY] = [0; CAPACITY];
-    server.try_read(&mut buf)?;
+    let read = loop {
+        match server.try_read(&mut buf)? {
+            0 => time::sleep(Duration::from_millis(100)).await,
+            n => break n,
+        }
+    };
 
-    trace!("IPC received data");
+    trace!("IPC received {read} bytes");
 
-    Ok(from_slice::<IPCMessage>(&mut buf)?)
+    Ok(from_slice::<IPCMessage>(&buf[0..read])?)
 }
 
 pub async fn send_data(data: IPCMessage) -> Result<()> {
     trace!("IPC attempting to send data");
     let client = loop {
-        match ClientOptions::new().open(PIPE_NAME) {
-            Ok(client) => break client,
-            Err(_) => (),
+        if let Ok(client) = ClientOptions::new().open(PIPE_NAME) {
+            break client;
         }
 
         time::sleep(Duration::from_millis(50)).await;
     };
-    trace!("IPC client connected");
 
-    client.writable().await?;
-    client.try_write(to_string(&data)?.as_bytes())?;
+    let written = loop {
+        client.writable().await?;
+        match client.try_write(to_string(&data)?.as_bytes()) {
+            Ok(n) => break n,
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
+            Err(e) => return Err(e.into()),
+        };
+    };
 
-    trace!("IPC sent data");
+    trace!("IPC sent {written} bytes of data");
 
     Ok(())
 }

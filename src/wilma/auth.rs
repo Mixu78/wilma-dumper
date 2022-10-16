@@ -1,6 +1,7 @@
-use reqwest::{Client, Url, IntoUrl};
+use reqwest::{Client, IntoUrl, Url};
 
-use anyhow::Result;
+use anyhow::{ensure, Context, Result};
+use log::*;
 
 use serde::Deserialize;
 use serde_json::from_slice;
@@ -14,7 +15,7 @@ use rand::{distributions::Alphanumeric, Rng};
 use sha2::{Digest, Sha256};
 
 use crate::ipc::{self, IPCMessage};
-use crate::structs::{OpenIDConfiguration, OpenIDProvider};
+use super::models::{OpenIDConfiguration, OpenIDProvider};
 
 #[derive(Deserialize)]
 pub struct TokenData {
@@ -37,12 +38,15 @@ fn generate_code() -> (String, String) {
     (code_challenge, code_verifier)
 }
 
-pub async fn oauth_authorize(
-    client: &Client,
-    provider: &OpenIDProvider
-) -> Result<()> {
-    let configuration: OpenIDConfiguration =
-        from_slice(&client.get(&provider.configuration).send().await?.bytes().await?)?;
+pub async fn oauth_authorize(client: &Client, provider: &OpenIDProvider) -> Result<()> {
+    let configuration: OpenIDConfiguration = from_slice(
+        &client
+            .get(&provider.configuration)
+            .send()
+            .await?
+            .bytes()
+            .await?,
+    )?;
 
     let (code_challenge, code_verifier) = generate_code();
 
@@ -53,16 +57,21 @@ pub async fn oauth_authorize(
         .collect();
 
     let mut auth_url = Url::parse(configuration.authorization_endpoint.as_str())?;
-    auth_url
-        .query_pairs_mut()
-        .append_pair("client_id", provider.client_id.as_str())
-        .append_pair("response_type", "code")
-        .append_pair("scope", "openid+email")
-        .append_pair("redirect_uri", "wilma://oauth")
-        .append_pair("state", state.as_str())
-        .append_pair("code_challenge_method", "S256")
-        .append_pair("code_challenge", code_challenge.as_str())
-        .finish();
+    // query_pairs_mut does encoding which breaks the scope
+    auth_url.set_query(Some(
+        format!(
+            "\
+    client_id={}&\
+    response_type=code&\
+    scope=openid+email&\
+    redirect_uri=wilma://oauth&\
+    state={state}&\
+    code_challenge_method=S256&\
+    code_challenge={code_challenge}\
+    ", provider.client_id
+        )
+        .as_str(),
+    ));
 
     webbrowser::open(auth_url.as_str())?;
     ipc::send_data(IPCMessage::TokenRequest {
@@ -82,22 +91,25 @@ pub async fn oauth_authenticate(
     client_id: String,
     code_verifier: String,
 ) -> Result<TokenData> {
-    assert!(protocol_url.scheme() == "wilma", "Invalid url scheme");
+    ensure!(protocol_url.scheme() == "wilma", "Invalid url scheme");
 
     let params: HashMap<String, String> = protocol_url
         .query_pairs()
         .map(|(a, b)| (a.into_owned(), b.into_owned()))
         .collect();
 
-    let code = params.get("code".into()).expect("Missing code");
+    debug!("{protocol_url:?}");
+
+    let code = params.get(&"code".to_string()).context("Missing code")?;
 
     let params = [
         ("client_id", client_id.as_str()),
         ("grant_type", "authorization_code"),
+        ("redirect_uri", "wilma://oauth"),
         ("code", code.as_str()),
         ("code_verifier", code_verifier.as_str()),
     ];
 
     let response = client.post(token_url).form(&params).send().await?;
-    Ok(from_slice(&response.bytes().await?)?)
+    from_slice(&response.bytes().await?).context("Unexpected oauth token response")
 }
