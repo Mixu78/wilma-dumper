@@ -12,11 +12,11 @@ use log::*;
 
 use interfaces::{Interface, InterfaceContext};
 
+mod dump;
 mod interfaces;
 mod ipc;
 mod reg;
 mod wilma;
-mod dump;
 
 const DEFAULT_LOGGER_LEVEL: LevelFilter = if cfg!(debug_assertions) {
     LevelFilter::Debug

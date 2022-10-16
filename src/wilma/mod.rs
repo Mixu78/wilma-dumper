@@ -52,13 +52,16 @@ impl Wilma {
     }
 
     pub fn get_url(&self) -> Result<Url> {
-        Ok(self.base_url.join(format!(
-            "{}/",
-            self.role
-                .as_ref()
-                .ok_or_else(|| anyhow!("No role selected"))?
-                .slug
-        ).as_str())?)
+        Ok(self.base_url.join(
+            format!(
+                "{}/",
+                self.role
+                    .as_ref()
+                    .ok_or_else(|| anyhow!("No role selected"))?
+                    .slug
+            )
+            .as_str(),
+        )?)
     }
 }
 

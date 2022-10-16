@@ -1,7 +1,7 @@
-use tokio::net::windows::named_pipe::{ClientOptions, ServerOptions};
-use tokio::time;
 use std::io;
 use std::time::Duration;
+use tokio::net::windows::named_pipe::{ClientOptions, ServerOptions};
+use tokio::time;
 
 use anyhow::Result;
 
@@ -25,7 +25,7 @@ pub enum IPCMessage {
     TokenResponse {
         access_token: String,
         id_token: String,
-    }
+    },
 }
 
 pub async fn receive_data() -> Result<IPCMessage> {

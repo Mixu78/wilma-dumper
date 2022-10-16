@@ -72,7 +72,9 @@ impl Interface for CliInterface {
                             println!("Credits from selected courses: {selected}");
                         }
                         CourseOption::Dump { file, format } => {
-                            let format = format.unwrap_or_else(|| String::from("json")).to_lowercase();
+                            let format = format
+                                .unwrap_or_else(|| String::from("json"))
+                                .to_lowercase();
                             let dump_format = match format.as_str() {
                                 "json" => dump::courses::Format::Json,
                                 "csv" => dump::courses::Format::Csv,

@@ -14,8 +14,8 @@ use base64_url;
 use rand::{distributions::Alphanumeric, Rng};
 use sha2::{Digest, Sha256};
 
-use crate::ipc::{self, IPCMessage};
 use super::models::{OpenIDConfiguration, OpenIDProvider};
+use crate::ipc::{self, IPCMessage};
 
 #[derive(Deserialize)]
 pub struct TokenData {
@@ -68,7 +68,8 @@ pub async fn oauth_authorize(client: &Client, provider: &OpenIDProvider) -> Resu
     state={state}&\
     code_challenge_method=S256&\
     code_challenge={code_challenge}\
-    ", provider.client_id
+    ",
+            provider.client_id
         )
         .as_str(),
     ));

@@ -40,10 +40,12 @@ pub fn calculate_study_points(courses: &[Course]) -> (f32, f32) {
         false => acc,
     });
 
-    let earned = courses.iter().fold(0.0, |acc, c| match c.eligible_for_points() {
-        true => acc + c.study_points,
-        false => acc,
-    });
+    let earned = courses
+        .iter()
+        .fold(0.0, |acc, c| match c.eligible_for_points() {
+            true => acc + c.study_points,
+            false => acc,
+        });
 
     (selected, earned)
 }
