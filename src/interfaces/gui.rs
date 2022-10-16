@@ -293,7 +293,7 @@ fn courses_dumper(app: &mut GuiApp, ctx: &egui::Context, ui: &mut Ui) {
             ui.add_enabled_ui(app.courses.is_some(), |ui| {
                 if ui.button("Calculate").clicked() {
                     app.courses_points = Some(dump::courses::calculate_study_points(
-                        &app.courses.as_ref().unwrap(),
+                        app.courses.as_ref().unwrap(),
                     ))
                 }
             });

@@ -3,7 +3,7 @@ use std::io::Write;
 
 use crate::wilma::models::Course;
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum Format {
     Json,
     Csv,
